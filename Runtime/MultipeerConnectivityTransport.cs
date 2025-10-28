@@ -9,22 +9,22 @@ using System.Collections.Generic;
 using UnityEngine;
 using Unity.Netcode;
 
-namespace Netcode.Transports.MultipeerConnectivity
+namespace Netcode.Transports.NearbyConnections
 {
-    public class MultipeerConnectivityTransport : NetworkTransport
+    public class NBCTransport : NetworkTransport
     {
         #if (UNITY_IOS || UNITY_VISIONOS) && !UNITY_EDITOR
             public const string IMPORT_LIBRARY = "__Internal";
         #else
-            public const string IMPORT_LIBRARY = "MultipeerConnectivityTransportForNetcodeForGameObjectsNativePlugin";
+            public const string IMPORT_LIBRARY = "NBC-DummyLib";
         #endif
 
         /// <summary>
         /// This class is a singleton so it's easy to be referenced anywhere.
         /// </summary>
-        public static MultipeerConnectivityTransport Instance => s_instance;
+        public static NBCTransport Instance => s_instance;
 
-        private static MultipeerConnectivityTransport s_instance;
+        private static NBCTransport s_instance;
 
         /// <summary>
         /// The server client Id should always be 0.
