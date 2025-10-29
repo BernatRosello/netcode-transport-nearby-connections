@@ -1,6 +1,4 @@
-// SPDX-FileCopyrightText: Copyright 2024 Reality Design Lab <dev@reality.design>
-// SPDX-FileContributor: Yuchen Zhang <yuchenz27@outlook.com>
-// SPDX-FileContributor: Botao Amber Hu <botao@reality.design>
+// SPDX-FileCopyrightText: 2025
 // SPDX-License-Identifier: MIT
 
 using System;
@@ -13,329 +11,151 @@ namespace Netcode.Transports.NearbyConnections
 {
     public class NBCTransport : NetworkTransport
     {
-        #if (UNITY_IOS || UNITY_VISIONOS) && !UNITY_EDITOR
-            public const string IMPORT_LIBRARY = "__Internal";
-        #else
-            public const string IMPORT_LIBRARY = "NBC-DummyLib";
-        #endif
+#if (UNITY_IOS || UNITY_VISIONOS) && !UNITY_EDITOR
+        public const string IMPORT_LIBRARY = "__Internal";
+#elif UNITY_ANDROID && !UNITY_EDITOR
+    public const string IMPORT_LIBRARY = "libnc_unity.so";
+#else
+    public const string IMPORT_LIBRARY = "libnc_unity.so";
+#endif
 
-        /// <summary>
-        /// This class is a singleton so it's easy to be referenced anywhere.
-        /// </summary>
         public static NBCTransport Instance => s_instance;
-
         private static NBCTransport s_instance;
 
-        /// <summary>
-        /// The server client Id should always be 0.
-        /// </summary>
         public override ulong ServerClientId => 0;
 
-        [Tooltip("This is a unique Id to identify your MPC session. Only devices with the same session Id can connect to each other. " +
-            "You can leave this to empty but it will make your network session not unique.")]
-        public string SessionId = null;
+        [Tooltip("Unique service ID for this Nearby session.")]
+        public string SessionId = "unity-nc";
 
         [Tooltip("This will be the name of your device in the network.")]
-        public string Nickname = "";
+        public string Nickname = "UnityPeer";
 
         [Header("Host Config")]
-        [Tooltip("Setting this to true to automatically advertise after starting host. " +
-            "Otherwise, you will need to manually call StartAdvertising().")]
         public bool AutoAdvertise = true;
-
-        [Tooltip("Setting this to true to automatically approve all incoming connection requests. " +
-            "Otherwise, you will need to manually approve each connection request.")]
         public bool AutoApproveConnectionRequest = true;
 
         [Header("Client Config")]
-        [Tooltip("Setting this to true to automatically browse after starting client. " +
-            "Otherwise, you will need to manually call StartBrowsing().")]
         public bool AutoBrowse = true;
-
-        [Tooltip("Setting this to true to automatically join the first browsed session. " +
-            "Otherwise, you will need to manually send connection request to a host.")]
         public bool AutoSendConnectionRequest = true;
 
-        public Dictionary<int, string> NearbyHostDict => _nearbyHostDict;
-
-        public Dictionary<int, string> PendingConnectionRequestDict => _pendingConnectionRequestDict;
-
-        public bool IsAdvertising => _isAdvertising;
-
-        public bool IsBrowsing => _isBrowsing;
-        
-        /// <summary>
-        /// Showing whether the device is currently advertising itself.
-        /// </summary>
         private bool _isAdvertising = false;
-
-        /// <summary>
-        /// Showing whether the device is currently browsing for nearby peers.
-        /// </summary>
         private bool _isBrowsing = false;
 
-        /// <summary>
-        /// Stores all browsed nearby hosts. The first parameter is the browsed host key
-        /// and the second is the browsed host name.
-        /// </summary>
         private readonly Dictionary<int, string> _nearbyHostDict = new();
-
-        /// <summary>
-        /// Stores all received connection requests. The first parameter is the connection request key
-        /// and the second is the name of the client who sent the connection request.
-        /// </summary>
         private readonly Dictionary<int, string> _pendingConnectionRequestDict = new();
 
-        /// <summary>
-        /// Initialize the MPCSession and register native callbacks.
-        /// </summary>
-        /// <param name="nickname">The name of the device displayed in the network</param>
-        /// <param name="onBrowserFoundPeer">Invoked when the browser finds a peer</param>
-        /// <param name="onBrowserLostPeer">Invoked when the browser loses a peer</param>
-        /// <param name="onAdvertiserReceivedConnectionRequest">Invoked when the advertiser receives a connection request</param>
-        /// <param name="onAdvertiserApprovedConnectionRequest">Invoked when the advertiser approves a connection request</param>
-        /// <param name="onConnectingWithPeer">Invoked when connecting with a peer</param>
-        /// <param name="onConnectedWithPeer">Invoked when connected with a peer</param>
-        /// <param name="onDisconnectedWithPeer">Invoked when disconnected with a peer</param>
-        /// <param name="onReceivedData">Invoked when receives data message from a peer</param>
-        [DllImport(IMPORT_LIBRARY)]
-        private static extern void MPC_Initialize(string nickname,
-                                                  Action<int, string> onBrowserFoundPeer,
-                                                  Action<int, string> onBrowserLostPeer,
-                                                  Action<int, string> onAdvertiserReceivedConnectionRequest,
-                                                  Action<int> onAdvertiserApprovedConnectionRequest,
-                                                  Action<string> onConnectingWithPeer,
-                                                  Action<int, string> onConnectedWithPeer,
-                                                  Action<int, string> onDisconnectedWithPeer,
-                                                  Action<int, IntPtr, int> onReceivedData);
+        public Dictionary<int, string> NearbyHostDict => _nearbyHostDict;
+        public Dictionary<int, string> PendingConnectionRequestDict => _pendingConnectionRequestDict;
+        public bool IsAdvertising => _isAdvertising;
+        public bool IsBrowsing => _isBrowsing;
 
-        /// <summary>
-        /// Start advertising to allow nearby peers to find you.
-        /// </summary>
-        /// <param name="sessionId">The unique id of the network session</param>
-        /// <param name="autoApproveConnectionRequest">Setting to true to approve all incoming connection requests</param>
-        [DllImport(IMPORT_LIBRARY)]
-        private static extern void MPC_StartAdvertising(string sessionId, bool autoApproveConnectionRequest);
+        // -------------------------------------------------------------------------------------
+        // Native imports (wrappers for nc_unity_adapter.h)
+        // -------------------------------------------------------------------------------------
 
-        /// <summary>
-        /// Start browsing for nearny advertising peers.
-        /// </summary>
-        /// <param name="sessionId">The unique id of the network session</param>
-        /// <param name="autoSendConnectionRequest">Setting to true to automatically send connection request to the first browsed peer</param>
-        [DllImport(IMPORT_LIBRARY)]
-        private static extern void MPC_StartBrowsing(string sessionId, bool autoSendConnectionRequest);
+        [DllImport(IMPORT_LIBRARY)] private static extern void NBC_Initialize(string serviceId);
+        [DllImport(IMPORT_LIBRARY)] private static extern void NBC_Shutdown();
 
-        /// <summary>
-        /// Stop advertising.
-        /// </summary>
-        [DllImport(IMPORT_LIBRARY)]
-        private static extern void MPC_StopAdvertising();
+        [DllImport(IMPORT_LIBRARY)] private static extern void NBC_StartAdvertising();
+        [DllImport(IMPORT_LIBRARY)] private static extern void NBC_StopAdvertising();
+        [DllImport(IMPORT_LIBRARY)] private static extern void NBC_StartDiscovery();
+        [DllImport(IMPORT_LIBRARY)] private static extern void NBC_StopDiscovery();
 
-        /// <summary>
-        /// Stop browsing.
-        /// </summary>
-        [DllImport(IMPORT_LIBRARY)]
-        private static extern void MPC_StopBrowsing();
+        [DllImport(IMPORT_LIBRARY)] private static extern void NBC_AcceptConnection(int endpointId);
+        [DllImport(IMPORT_LIBRARY)] private static extern void NBC_RejectConnection(int endpointId);
+        [DllImport(IMPORT_LIBRARY)] private static extern void NBC_Disconnect(int endpointId);
+        [DllImport(IMPORT_LIBRARY)] private static extern void NBC_SendBytes(int endpointId, byte[] data, int len);
 
-        /// <summary>
-        /// Shutdown and deinitialize the MPCSession.
-        /// </summary>
-        [DllImport(IMPORT_LIBRARY)]
-        private static extern void MPC_Shutdown();
+        // Callbacks
+        [DllImport(IMPORT_LIBRARY)] private static extern void NBC_SetOnPeerFound(OnPeerFoundCallback cb);
+        [DllImport(IMPORT_LIBRARY)] private static extern void NBC_SetOnPeerLost(OnPeerLostCallback cb);
+        [DllImport(IMPORT_LIBRARY)] private static extern void NBC_SetOnConnectionRequested(OnConnectionRequestedCallback cb);
+        [DllImport(IMPORT_LIBRARY)] private static extern void NBC_SetOnConnectionEstablished(OnConnectionEstablishedCallback cb);
+        [DllImport(IMPORT_LIBRARY)] private static extern void NBC_SetOnConnectionDisconnected(OnConnectionDisconnectedCallback cb);
+        [DllImport(IMPORT_LIBRARY)] private static extern void NBC_SetOnDataReceived(OnDataReceivedCallback cb);
 
-        /// <summary>
-        /// Send data message to a specific connected peer.
-        /// </summary>
-        /// <param name="transportID">The transport id of the recipient peer</param>
-        /// <param name="data">The raw data</param>
-        /// <param name="length">The length of the data</param>
-        /// <param name="reliable">Whether to use realiable way to send the data</param>
-        [DllImport(IMPORT_LIBRARY)]
-        private static extern void MPC_SendData(int transportID, byte[] data, int length, bool reliable);
+        // -------------------------------------------------------------------------------------
+        // Callback delegate signatures (MUST match C)
+        // -------------------------------------------------------------------------------------
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate void OnPeerFoundCallback(int endpointId, string name);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate void OnPeerLostCallback(int endpointId);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate void OnConnectionRequestedCallback(int endpointId, string name);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate void OnConnectionEstablishedCallback(int endpointId);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate void OnConnectionDisconnectedCallback(int endpointId);
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate void OnDataReceivedCallback(int endpointId, IntPtr data, int len);
 
-        /// <summary>
-        /// Send connection request to a specific browsed host.
-        /// </summary>
-        /// <param name="nearbyHostKey">The key of the host in the dict</param>
-        [DllImport(IMPORT_LIBRARY)]
-        private static extern void MPC_SendConnectionRequest(int nearbyHostKey);
+        // -------------------------------------------------------------------------------------
+        // Callback methods invoked by native layer
+        // -------------------------------------------------------------------------------------
 
-        /// <summary>
-        /// Approve the connection request sent by a specific client.
-        /// </summary>
-        /// <param name="connectionRequestKey">The key of the connection request in the dict</param>
-        [DllImport(IMPORT_LIBRARY)]
-        private static extern void MPC_ApproveConnectionRequest(int connectionRequestKey);
-
-        /// <summary>
-        /// Links to a native callback which is invoked when the browser finds a new nearby host host.
-        /// </summary>
-        /// <param name="nearbyHostKey">The key of the host in the dict</param>
-        /// <param name="nearbyHostName">The name of the host</param>
-        [AOT.MonoPInvokeCallback(typeof(Action<int, string>))]
-        private static void OnBrowserFoundPeerDelegate(int nearbyHostKey, string nearbyHostName)
+        [AOT.MonoPInvokeCallback(typeof(OnPeerFoundCallback))]
+        private static void OnPeerFoundDelegate(int endpointId, string name)
         {
-            if (s_instance != null)
-            {
-                // Add browsed host to the dict
-                s_instance._nearbyHostDict.Add(nearbyHostKey, nearbyHostName);
-                // Invoke the event
-                s_instance.OnBrowserFoundPeer?.Invoke(nearbyHostKey, nearbyHostName);
-            } 
+            if (s_instance == null) return;
+            if (!s_instance._nearbyHostDict.ContainsKey(endpointId))
+                s_instance._nearbyHostDict.Add(endpointId, name);
+
+            s_instance.OnBrowserFoundPeer?.Invoke(endpointId, name);
+
+            if (s_instance.AutoSendConnectionRequest && s_instance._isBrowsing)
+                s_instance.SendConnectionRequest(endpointId);
         }
 
-        /// <summary>
-        /// Links to a native callback which is invoked when the browser loses a host.
-        /// </summary>
-        /// <param name="nearbyHostKey">The key of the host in the dict</param>
-        /// <param name="nearbyHostName">The name of the host</param>
-        [AOT.MonoPInvokeCallback(typeof(Action<int, string>))]
-        private static void OnBrowserLostPeerDelegate(int nearbyHostKey, string nearbyHostName)
+        [AOT.MonoPInvokeCallback(typeof(OnPeerLostCallback))]
+        private static void OnPeerLostDelegate(int endpointId)
         {
-            if (s_instance != null)
-            {
-                // Remove browsed host from the dict
-                s_instance._nearbyHostDict.Remove(nearbyHostKey);
-                // Invoke the event
-                s_instance.OnBrowserLostPeer?.Invoke(nearbyHostKey, nearbyHostName);
-            }
+            if (s_instance == null) return;
+            if (s_instance._nearbyHostDict.ContainsKey(endpointId))
+                s_instance._nearbyHostDict.Remove(endpointId);
+            s_instance.OnBrowserLostPeer?.Invoke(endpointId, "");
         }
 
-        /// <summary>
-        /// Links to a native callback which is invoked when the advertiser receives a connection request.
-        /// </summary>
-        /// <param name="connectionRequestKey">The key of the connection request in the dict</param>
-        /// <param name="senderName">The name of the client who sent the connection request</param>
-        [AOT.MonoPInvokeCallback(typeof(Action<int, string>))]
-        private static void OnAdvertiserReceivedConnectionRequestDelegate(int connectionRequestKey, string senderName)
+        [AOT.MonoPInvokeCallback(typeof(OnConnectionRequestedCallback))]
+        private static void OnConnectionRequestedDelegate(int endpointId, string name)
         {
-            if (s_instance != null)
-            {
-                if (!s_instance.AutoApproveConnectionRequest)
-                {
-                    // Add connection request to the dict
-                    s_instance._pendingConnectionRequestDict.Add(connectionRequestKey, senderName);
-                }
-                // Invoke the event
-                s_instance.OnAdvertiserReceivedConnectionRequest?.Invoke(connectionRequestKey, senderName);
-            }
+            if (s_instance == null) return;
+            if (!s_instance.AutoApproveConnectionRequest)
+                s_instance._pendingConnectionRequestDict[endpointId] = name;
+            s_instance.OnAdvertiserReceivedConnectionRequest?.Invoke(endpointId, name);
+
+            if (s_instance.AutoApproveConnectionRequest)
+                NBC_AcceptConnection(endpointId);
         }
 
-        /// <summary>
-        /// Links to a native callback which is invoked when the advertiser handles a connection request.
-        /// </summary>
-        /// <param name="connectionRequestKey">The key of the connection request in the dict</param>
-        [AOT.MonoPInvokeCallback(typeof(Action<int>))]
-        private static void OnAdvertiserApprovedConnectionRequestDelegate(int connectionRequestKey)
+        [AOT.MonoPInvokeCallback(typeof(OnConnectionEstablishedCallback))]
+        private static void OnConnectionEstablishedDelegate(int endpointId)
         {
-            if (s_instance != null)
-            {
-                if (s_instance._pendingConnectionRequestDict.ContainsKey(connectionRequestKey))
-                {
-                    // Remove the connection request from the dict
-                    s_instance._pendingConnectionRequestDict.Remove(connectionRequestKey);
-                }
-                // Invoke the event
-                s_instance.OnAdvertiserApprovedConnectionRequest?.Invoke(connectionRequestKey);
-            }
+            if (s_instance == null) return;
+            s_instance._isBrowsing = false;
+            s_instance._isAdvertising = false;
+            s_instance.InvokeOnTransportEvent(NetworkEvent.Connect, (ulong)endpointId,
+                default, Time.realtimeSinceStartup);
         }
 
-        /// <summary>
-        /// Links to a native callback which is invoked when the local peer is connecting with a peer.
-        /// </summary>
-        /// <param name="peerName">The name of the peer</param>
-        [AOT.MonoPInvokeCallback(typeof(Action<string>))]
-        private static void OnConnectingWithPeerDelegate(string peerName)
+        [AOT.MonoPInvokeCallback(typeof(OnConnectionDisconnectedCallback))]
+        private static void OnConnectionDisconnectedDelegate(int endpointId)
         {
-            if (s_instance != null)
-            {
-                s_instance.OnConnectingWithPeer?.Invoke(peerName);
-            }
+            if (s_instance == null) return;
+            s_instance.InvokeOnTransportEvent(NetworkEvent.Disconnect, (ulong)endpointId,
+                default, Time.realtimeSinceStartup);
         }
 
-        /// <summary>
-        /// Links to a native callback which is invoked when the local peer is connected with a peer.
-        /// </summary>
-        /// <param name="transportID">The transport id of the peer</param>
-        /// <param name="peerName">The name of the peer</param>
-        [AOT.MonoPInvokeCallback(typeof(Action<int, string>))]
-        private static void OnConnectedWithPeerDelegate(int transportID, string peerName)
+        [AOT.MonoPInvokeCallback(typeof(OnDataReceivedCallback))]
+        private static void OnDataReceivedDelegate(int endpointId, IntPtr dataPtr, int len)
         {
-            if (s_instance != null)
-            {
-                s_instance._isBrowsing = false;
-                s_instance._nearbyHostDict.Clear();
-
-                s_instance.InvokeOnTransportEvent(NetworkEvent.Connect, (ulong)transportID,
-                    default, Time.realtimeSinceStartup);
-            }
+            if (s_instance == null) return;
+            byte[] data = new byte[len];
+            Marshal.Copy(dataPtr, data, 0, len);
+            s_instance.InvokeOnTransportEvent(NetworkEvent.Data, (ulong)endpointId,
+                new ArraySegment<byte>(data, 0, len), Time.realtimeSinceStartup);
         }
 
-        /// <summary>
-        /// Links to a native callback which is invoked when the local peer is disconnected with a peer.
-        /// </summary>
-        /// <param name="transportID">The transport id of the peer</param>
-        /// <param name="peerName">The name of the peer</param>
-        [AOT.MonoPInvokeCallback(typeof(Action<int, string>))]
-        private static void OnDisconnectedWithPeerDelegate(int transportID, string peerName)
-        {
-            if (s_instance != null)
-            {
-                s_instance.InvokeOnTransportEvent(NetworkEvent.Disconnect, (ulong)transportID,
-                   default, Time.realtimeSinceStartup);
-            }
-        }
-
-        /// <summary>
-        /// Links to a native callback which is invoked when the local peer receives data from a peer.
-        /// </summary>
-        /// <param name="transportID">The transport id of the peer</param>
-        /// <param name="dataPtr">The pointer to the raw data</param>
-        /// <param name="length">The length of the data array</param>
-        [AOT.MonoPInvokeCallback(typeof(Action<int, IntPtr, int>))]
-        private static void OnReceivedDataDelegate(int transportID, IntPtr dataPtr, int length)
-        {
-            if (s_instance != null)
-            {
-                byte[] data = new byte[length];
-                Marshal.Copy(dataPtr, data, 0, length);
-                s_instance.InvokeOnTransportEvent(NetworkEvent.Data, (ulong)transportID,
-                    new ArraySegment<byte>(data, 0, length), Time.realtimeSinceStartup);
-            }
-        }
-
-        /// <summary>
-        /// Invoked when the browser finds a nearby host peer.
-        /// The first parameter is the host peer key in the dict.
-        /// The second parameter is the name of the host peer.
-        /// </summary>
-        public event Action<int, string> OnBrowserFoundPeer;
-
-        /// <summary>
-        /// Invoked when the browser loses a nearby host peer.
-        /// The first parameter is the host peer key in the dict.
-        /// The second parameter is the name of the host peer.
-        /// </summary>
-        public event Action<int, string> OnBrowserLostPeer;
-
-        /// <summary>
-        /// Invoked when the advertiser receives a connection request.
-        /// The first parameter is the connection request key in the dict.
-        /// The second parameter is the name of the peer who sent the connection request.
-        /// </summary>
-        public event Action<int, string> OnAdvertiserReceivedConnectionRequest;
-
-        public event Action<int> OnAdvertiserApprovedConnectionRequest;
-
-        /// <summary>
-        /// Invoked when initializes connection with a new peer. This event should be used only for notification purpose.
-        /// The first parameter is the name of the connecting peer.
-        /// </summary>
-        public event Action<string> OnConnectingWithPeer;
+        // -------------------------------------------------------------------------------------
+        // Unity lifecycle
+        // -------------------------------------------------------------------------------------
 
         private void Awake()
         {
-            // Initialize the singleton instance
             if (s_instance != null && s_instance != this)
             {
                 Destroy(gameObject);
@@ -348,34 +168,101 @@ namespace Netcode.Transports.NearbyConnections
 
         public override void Initialize(NetworkManager networkManager)
         {
-            MPC_Initialize(Nickname,
-                           OnBrowserFoundPeerDelegate,
-                           OnBrowserLostPeerDelegate,
-                           OnAdvertiserReceivedConnectionRequestDelegate,
-                           OnAdvertiserApprovedConnectionRequestDelegate,
-                           OnConnectingWithPeerDelegate,
-                           OnConnectedWithPeerDelegate,
-                           OnDisconnectedWithPeerDelegate,
-                           OnReceivedDataDelegate);
+            // Initialize native NC layer
+            NBC_Initialize(SessionId);
+
+            // Hook native callbacks
+            NBC_SetOnPeerFound(OnPeerFoundDelegate);
+            NBC_SetOnPeerLost(OnPeerLostDelegate);
+            NBC_SetOnConnectionRequested(OnConnectionRequestedDelegate);
+            NBC_SetOnConnectionEstablished(OnConnectionEstablishedDelegate);
+            NBC_SetOnConnectionDisconnected(OnConnectionDisconnectedDelegate);
+            NBC_SetOnDataReceived(OnDataReceivedDelegate);
         }
 
         public override bool StartServer()
         {
             if (AutoAdvertise)
-            {
                 StartAdvertising();
-            }
             return true;
         }
 
         public override bool StartClient()
         {
             if (AutoBrowse)
-            {
                 StartBrowsing();
-            }
             return true;
         }
+
+        public override void Shutdown()
+        {
+            NBC_Shutdown();
+            _pendingConnectionRequestDict.Clear();
+            _nearbyHostDict.Clear();
+            _isAdvertising = false;
+            _isBrowsing = false;
+        }
+
+        // -------------------------------------------------------------------------------------
+        // Public control
+        // -------------------------------------------------------------------------------------
+
+        public void StartAdvertising()
+        {
+            if (!_isAdvertising)
+            {
+                _pendingConnectionRequestDict.Clear();
+                Debug.Log("[NBC] StartAdvertising()");
+                NBC_StartAdvertising();
+                _isAdvertising = true;
+            }
+        }
+
+        public void StopAdvertising()
+        {
+            if (_isAdvertising)
+            {
+                NBC_StopAdvertising();
+                _isAdvertising = false;
+            }
+        }
+
+        public void StartBrowsing()
+        {
+            if (!_isBrowsing)
+            {
+                _nearbyHostDict.Clear();
+                Debug.Log("[NBC] StartDiscovery()");
+                NBC_StartDiscovery();
+                _isBrowsing = true;
+            }
+        }
+
+        public void StopBrowsing()
+        {
+            if (_isBrowsing)
+            {
+                NBC_StopDiscovery();
+                _isBrowsing = false;
+                _nearbyHostDict.Clear();
+            }
+        }
+
+        public void SendConnectionRequest(int endpointId)
+        {
+            // For Nearby, just initiate connection
+            Debug.Log($"[NBC] Send connection request to {endpointId}");
+            NBC_AcceptConnection(endpointId);
+        }
+
+        public void ApproveConnectionRequest(int endpointId)
+        {
+            NBC_AcceptConnection(endpointId);
+        }
+
+        // -------------------------------------------------------------------------------------
+        // NGO Transport interface
+        // -------------------------------------------------------------------------------------
 
         public override NetworkEvent PollEvent(out ulong transportId, out ArraySegment<byte> payload, out float receiveTime)
         {
@@ -385,101 +272,25 @@ namespace Netcode.Transports.NearbyConnections
             return NetworkEvent.Nothing;
         }
 
-        public override void Send(ulong transportId, ArraySegment<byte> data, NetworkDelivery networkDelivery)
+        public override void Send(ulong transportId, ArraySegment<byte> data, NetworkDelivery delivery)
         {
-            MPC_SendData((int)transportId, data.Array, data.Count,
-                !(networkDelivery == NetworkDelivery.Unreliable || networkDelivery == NetworkDelivery.UnreliableSequenced));
+            bool reliable = !(delivery == NetworkDelivery.Unreliable || delivery == NetworkDelivery.UnreliableSequenced);
+            NBC_SendBytes((int)transportId, data.Array, data.Count);
         }
 
-        public override ulong GetCurrentRtt(ulong transportId)
-        {
-            return 0;
-        }
+        public override ulong GetCurrentRtt(ulong transportId) => 0;
 
-        /// <summary>
-        /// Called when a client tries to disconnect from the server.
-        /// </summary>
-        public override void DisconnectLocalClient()
-        {
-
-        }
-
+        public override void DisconnectLocalClient() { }
         public override void DisconnectRemoteClient(ulong transportId)
         {
-
+            NBC_Disconnect((int)transportId);
         }
 
-        public override void Shutdown()
-        {
-            MPC_Shutdown();
-            // Reset variables
-            _pendingConnectionRequestDict.Clear();
-            _nearbyHostDict.Clear();
-            _isAdvertising = false;
-            _isBrowsing = false;
-        }
-
-        /// <summary>
-        /// Start advertising.
-        /// </summary>
-        public void StartAdvertising()
-        {
-            if (!_isAdvertising)
-            {
-                _pendingConnectionRequestDict.Clear();
-                Debug.Log("Start advertising");
-                MPC_StartAdvertising(SessionId, AutoApproveConnectionRequest);
-                _isAdvertising = true;
-            }
-        }
-
-        /// <summary>
-        /// Stop advertising.
-        /// </summary>
-        public void StopAdvertising()
-        {
-            if (_isAdvertising)
-            {
-                MPC_StopAdvertising();
-                _isAdvertising = false;
-                _pendingConnectionRequestDict.Clear();
-            }
-        }
-
-        /// <summary>
-        /// Start browsing.
-        /// </summary>
-        public void StartBrowsing()
-        {
-            if (!_isBrowsing)
-            {
-                _nearbyHostDict.Clear();
-                MPC_StartBrowsing(SessionId, AutoSendConnectionRequest);
-                _isBrowsing = true;
-            }
-        }
-
-        /// <summary>
-        /// Stop browsing.
-        /// </summary>
-        public void StopBrowsing()
-        {
-            if (_isBrowsing)
-            {
-                MPC_StopBrowsing();
-                _isBrowsing = false;
-                _nearbyHostDict.Clear();
-            }
-        }
-
-        public void SendConnectionRequest(int nearbyHostKey)
-        {
-            MPC_SendConnectionRequest(nearbyHostKey);
-        }
-
-        public void ApproveConnectionRequest(int connectionRequestKey)
-        {
-            MPC_ApproveConnectionRequest(connectionRequestKey);
-        }
+        // -------------------------------------------------------------------------------------
+        // Unity Events
+        // -------------------------------------------------------------------------------------
+        public event Action<int, string> OnBrowserFoundPeer;
+        public event Action<int, string> OnBrowserLostPeer;
+        public event Action<int, string> OnAdvertiserReceivedConnectionRequest;
     }
 }
